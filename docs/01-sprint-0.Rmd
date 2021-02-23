@@ -55,124 +55,38 @@ huc10 <- "1805000502"
 
 # Helpful
 library(mapview)
-
-source(system.file("extdata", "walker_data.R", package = "hyRefactor"))
 ```
 
 ## Walker Data
 
 We use the sample 'Walker' data from `hygeo`. It appears to be the
 HUC10-1805000502. Whatever flowline data is used, it must have a
-**COMID, TONODE, FROMNODE, STREAMORE, LEVELPATHI, HYDROSEQ**. The
-catchment network must have a **COMID**. **Area** and **length** can,
-and should, be calculated within the workflow .
+**COMID, TONODE, FROMNODE, STREAMORE, LEVELPATHI, HYDROSEQ**. 
+
+The catchment network must have a **COMID**. **Area** and **length** can,
+and should, be calculated within the workflow.
 
 ```{r}
-cat <- dplyr::select(walker_catchment, comid = FEATUREID) %>% 
+source('../R/prep_flownetwork.R')
+
+cat <- read_sf("../data/huc1805000502-catchment.gpkg") %>% 
+   dplyr::select(comid = FEATUREID) %>% 
    mutate(areasqkm = as.numeric(set_units(st_area(.), "km2")))
 
-fl <- setNames(walker_flowline, tolower(names(walker_flowline))) %>%
-      dplyr::select(comid, tonode, fromnode, streamorde, levelpathi, hydroseq) %>%
-      left_join(st_drop_geometry(cat)) %>%
-      left_join(st_drop_geometry(dplyr::select(., toCOMID = comid, fromnode)),
-                by = c("tonode" = "fromnode"))
-
-fl <- left_join(fl, st_drop_geometry(dplyr::select(fl,  fromCOMID = comid, tonode)), 
-                by = c("fromnode" = "tonode")) %>%
-      st_drop_geometry() %>%
-      dplyr::select(comid, fromCOMID) %>%
-      group_by(comid) %>%
-      summarize(fromCOMID = toJSON(fromCOMID)) %>%
-      right_join(fl) %>%
-      st_as_sf() %>%
-      mutate(lengthkm = as.numeric(set_units(st_length(.), "km")))
+fl = read_sf("../data/huc1805000502-flowlines.gpkg") %>% 
+  prep_flownetwork(cat)
 ```
 
-```{r}
-# TODO: add user define nexus
-# This may be a good/better place to enfore the stream order junctions
-```
-
-## User Entries:
+## Base Data:
 
 Here we define, the minimum, maximum and target (ideal) catchment size.
 The following algorithms will de there best to build catchments with the
 "ideal size" but will be limited to the catchment set available. No
-effort to disaggregate catchments will occure.
+effort to disaggragate catchments will occur.
 
 ```{r}
 # Define with respect to square kilometers
 mapview(cat) + fl
-```
-
-To start, we identify the headwater inlets in the AOI. Using these as
-starting points we trace level paths downstream aggregating casements
-aiming to preserve the ideal catchment size. COMIDs are retained through
-the aggregation in a JSON notation. At the end, the catchment and
-flowpath COMIDs are aligned.
-
-```{r}
-source('../R/aggregate_by_connectivity.R')
-agg_connectivity = aggregate_by_connectivity(fl, ideal_size = 10)
-mapview(agg_connectivity$cat) + agg_connectivity$fl
-```
-
-This is a secondary pass to aggregated catchments less the minimum
-desired size. A stream order based logic is applied to aggregate smaller
-catchments into larger components where the upper limit is observed
-
-```{r}
-source('../R/aggregate_by_size.R')
-agg_size = aggregate_by_size(agg_connectivity$fl, 
-                             agg_connectivity$cat, 
-                             min_size = 3,
-                             max_size = 15)
-mapview(agg_size$cat) + agg_size$fl
-```
-
-The goal here is to align the flow network to the aggregated catchment
-network such that there is only 1 flow line per catchment, and all
-flowpaths are LINESTRINGS
-
-```{r}
-source('../R/purge_flowlines.R')
-purge_fl = purge_flowlines(agg_size$fl, agg_size$cat)
-mapview(purge_fl$cat) + purge_fl$fl
-```
-
-# Fix Edges
-
-This is the first topology fix. It treats the flowline junctions as
-"truth" and modifies the catchment polygon topology to such that there
-is agreement between the cathment and flowpath networks.
-
-There are areas of the NHD where a flowline crosses a catchment
-boundary, in some cases this results in a chunk of a catchment belonging
-to a catchment that is not part if the assocaited flowpath. This section
-seeks to split, reunition and modify these areas.
-
-```{r}
-source('../R/topology_doctor.R')
-topo_fix = topology_doctor(fl = purge_fl$fl, cat = purge_fl$cat)
-mapview(topo_fix$cat[c("ID", "areasqkm")]) + topo_fix$fl["ID"]
-```
-
-```{r}
-# TODO: slice-n-dice
-# Should we try to merge flow lines less then a specific threshold?
-```
-
-## Indexing
-
-```{r}
-source('../R/nexi_flow_graph.R')
-graph = nexus_flow_graph(fl = topo_fix$fl, cat = topo_fix$cat)
-
-# mapview(graph$edges$geom, color = ifelse(as.numeric(st_length(graph$edges)) < 1000, 
-#                                     "red", 
-#                                     "black")) + graph$cat
-
-mapview(graph$nodes[c('nodeID', "count")]) + graph$edges[c('ID', "from", "to", "length")] + graph$cat[c('ID', 'areasqkm')]
 ```
 
 
@@ -198,14 +112,90 @@ make_plot = function(fl, cat, title, min, ideal, max){
 make_plot(fl, cat, "NHDPlus Raw", 3, 10, 15) 
 ```
 
+To start, we identify the headwater inlets in the AOI. Using these as
+starting points we trace level paths downstream aggregating casements
+aiming to preserve the ideal catchment size. COMIDs are retained through
+the aggregation in a JSON notation. At the end, the catchment and
+flowpath COMIDs are aligned.
+
+```{r}
+source('../R/aggregate_by_connectivity.R')
+agg_connectivity = aggregate_by_connectivity(fl, ideal_size = 10)
+mapview(agg_connectivity$cat) + agg_connectivity$fl
+```
+
 ```{r, echo = FALSE}
 make_plot(agg_connectivity$fl, agg_connectivity$cat, "Connectivity",  3, 10, 15) 
 ```
 
+This is a secondary pass to aggregated catchments less the minimum
+desired size. A stream order based logic is applied to aggregate smaller
+catchments into larger components where the upper limit is observed
+
+```{r}
+source('../R/aggregate_by_size.R')
+agg_size = aggregate_by_size(agg_connectivity$fl, 
+                             agg_connectivity$cat, 
+                             min_size = 3,
+                             max_size = 15)
+mapview(agg_size$cat) + agg_size$fl
+```
+
+The goal here is to align the flow network to the aggregated catchment
+network such that there is only 1 flow line per catchment, and all
+flowpaths are LINESTRINGS
+
+```{r}
+source('../R/purge_flowlines.R')
+purge_fl = purge_flowlines(agg_size$fl, agg_size$cat)
+mapview(purge_fl$cat) + purge_fl$fl
+```
+
 ```{r, echo = FALSE}
-make_plot(agg_size$fl, agg_size$cat, "Size", 3, 10, 15) 
+make_plot(purge_fl$fl, purge_fl$cat, "Size", 3, 10, 15) 
+```
+
+# Fix Edges
+
+This is the first topology fix. It treats the flowline junctions as
+"truth" and modifies the catchment polygon topology to such that there
+is agreement between the cathment and flowpath networks.
+
+There are areas of the NHD where a flowline crosses a catchment
+boundary, in some cases this results in a chunk of a catchment belonging
+to a catchment that is not part if the assocaited flowpath. This section
+seeks to split, reunition and modify these areas.
+
+```{r}
+source('../R/topology_doctor.R')
+topo_fix = topology_doctor(fl = purge_fl$fl, cat = purge_fl$cat)
+mapview(topo_fix$cat[c("ID", "areasqkm")]) + topo_fix$fl["ID"]
+```
+
+```{r}
+# TODO: slice-n-dice
+# Should we try to merge flow lines less then a specific threshold?
+# mapview(graph$edges$geom, color = ifelse(as.numeric(st_length(graph$edges)) < 1000, 
+#                                     "red", 
+#                                     "black")) + graph$cat
 ```
 
 ```{r, echo = FALSE}
 make_plot(topo_fix$fl, topo_fix$cat, "Topo", 3, 10, 15)
 ```
+
+## Indexing
+
+```{r}
+source('../R/nexi_flow_graph.R')
+graph = nexus_flow_graph(fl = topo_fix$fl, cat = topo_fix$cat)
+
+#TODO: flowpath ids and catc ids should be aligned
+
+mapview(graph$nodes[c('nodeID', "count")], layer.name = "nodes", col.regions = "red", cex = 4) + 
+mapview(graph$edges[c('ID', "ID2", "from", "to", "length")], layer.name = "edges") +
+mapview(graph$cat[c('ID', 'areasqkm')], layer.name = "divides", col.regions = NA) 
+```
+
+
+
