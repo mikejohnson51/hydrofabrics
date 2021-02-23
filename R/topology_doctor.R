@@ -47,7 +47,6 @@ topology_doctor = function(fl, cat){
     cat$geom[inters] <- topo_fix(base_cat = tmp, anchor = nexi[x, ])$geom
   }
 
-  mapview(cat["ID"]) + fl
   o <- st_intersection(cat, fl) %>%
     filter(ID != ID.1, as.numeric(st_length(.)) > 1)
 

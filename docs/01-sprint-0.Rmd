@@ -20,17 +20,17 @@ delineated flow and catchment network.
 
 The key tasks are to:
 
-1.  [] Develop more *consistent and evenly distributed catchment sizes*
-2.  [] Fix *topology errors* resulting from scalar mismatches in product
+1.  [ ] Develop more *consistent and evenly distributed catchment sizes*
+2.  [ ] Fix *topology errors* resulting from scalar mismatches in product
     creation
-3.  [] Build a *referencing system* capable of handling network
+3.  [ ] Build a *referencing system* capable of handling network
     calculations
-4.  [] Retain a indexing scheme that can allow these new identities to
+4.  [ ] Retain a indexing scheme that can allow these new identities to
     relate to there origin identities (e.g., cross walk
-5.  [] Establish a addressing scheme that allows users to place hydrologic
+5.  [ ] Establish a addressing scheme that allows users to place hydrologic
     features (e.g., a stream gage) on to the network with precise
     spatial and hydrologic addressing.
-6.  [] Develop an indexing scheme that can be applied at a continental
+6.  [ ] Develop an indexing scheme that can be applied at a continental
     scale, but that can allow areas to be processes piecemeal.
 
 ```{r setup, include=FALSE}
@@ -79,16 +79,10 @@ fl = read_sf("../data/huc1805000502-flowlines.gpkg") %>%
 
 ## Base Data:
 
-Here we define, the minimum, maximum and target (ideal) catchment size.
-The following algorithms will de there best to build catchments with the
-"ideal size" but will be limited to the catchment set available. No
-effort to disaggragate catchments will occur.
-
 ```{r}
 # Define with respect to square kilometers
 mapview(cat) + fl
 ```
-
 
 ```{r, echo = FALSE}
 make_plot = function(fl, cat, title, min, ideal, max){
@@ -113,31 +107,30 @@ make_plot(fl, cat, "NHDPlus Raw", 3, 10, 15)
 ```
 
 To start, we identify the headwater inlets in the AOI. Using these as
-starting points we trace level paths downstream aggregating casements
-aiming to preserve the ideal catchment size. COMIDs are retained through
+starting points we trace levelpaths downstream aggregating catchments asw we go
+aiming to preserve an "ideal catchment size". COMIDs are retained through
 the aggregation in a JSON notation. At the end, the catchment and
 flowpath COMIDs are aligned.
 
 ```{r}
-source('../R/aggregate_by_connectivity.R')
-agg_connectivity = aggregate_by_connectivity(fl, ideal_size = 10)
-mapview(agg_connectivity$cat) + agg_connectivity$fl
+source('../R/aggregate_by_levelpath.R')
+agg_levelpath = aggregate_by_levelpath(fl, cat, ideal_size = 10, max_size = 15)
+mapview(agg_levelpath$cat) + agg_levelpath$fl
 ```
 
 ```{r, echo = FALSE}
-make_plot(agg_connectivity$fl, agg_connectivity$cat, "Connectivity",  3, 10, 15) 
+make_plot(agg_levelpath$fl, agg_levelpath$cat, "Connectivity",  3, 10, 15) 
 ```
 
-This is a secondary pass to aggregated catchments less the minimum
-desired size. A stream order based logic is applied to aggregate smaller
-catchments into larger components where the upper limit is observed
+After "levelpath aggregation" we begin consuming catchments with sizes less then a minimum threshold, while enforcing a maximum threshold (both user defined). A stream order based logic is applied to aggregate smaller catchments into larger component. 
 
 ```{r}
 source('../R/aggregate_by_size.R')
-agg_size = aggregate_by_size(agg_connectivity$fl, 
-                             agg_connectivity$cat, 
+agg_size = aggregate_by_size(fl  = agg_levelpath$fl, 
+                             cat = agg_levelpath$cat, 
                              min_size = 3,
                              max_size = 15)
+
 mapview(agg_size$cat) + agg_size$fl
 ```
 
@@ -146,13 +139,15 @@ network such that there is only 1 flow line per catchment, and all
 flowpaths are LINESTRINGS
 
 ```{r}
-source('../R/purge_flowlines.R')
-purge_fl = purge_flowlines(agg_size$fl, agg_size$cat)
-mapview(purge_fl$cat) + purge_fl$fl
+# TODO: need to remove this ... 
+# Integrat into aggregate by size...
+# source('../R/purge_flowlines.R')
+# purge_fl = purge_flowlines(agg_size$fl, agg_size$cat)
+# mapview(purge_fl$cat) + purge_fl$fl
 ```
 
 ```{r, echo = FALSE}
-make_plot(purge_fl$fl, purge_fl$cat, "Size", 3, 10, 15) 
+make_plot(agg_size$fl, agg_size$cat, "Size", 3, 10, 15) 
 ```
 
 # Fix Edges
@@ -163,21 +158,19 @@ is agreement between the cathment and flowpath networks.
 
 There are areas of the NHD where a flowline crosses a catchment
 boundary, in some cases this results in a chunk of a catchment belonging
-to a catchment that is not part if the assocaited flowpath. This section
+to a catchment that is not part if the associated flowpath. This section
 seeks to split, reunition and modify these areas.
 
 ```{r}
 source('../R/topology_doctor.R')
-topo_fix = topology_doctor(fl = purge_fl$fl, cat = purge_fl$cat)
+topo_fix = topology_doctor(fl = agg_size$fl, cat = agg_size$cat)
 mapview(topo_fix$cat[c("ID", "areasqkm")]) + topo_fix$fl["ID"]
 ```
 
 ```{r}
 # TODO: slice-n-dice
-# Should we try to merge flow lines less then a specific threshold?
-# mapview(graph$edges$geom, color = ifelse(as.numeric(st_length(graph$edges)) < 1000, 
-#                                     "red", 
-#                                     "black")) + graph$cat
+# Essentially this would look to move any double junction, to a three junction
+# If within a threshold (600m per Freds other suggestion? Is this ok here?)
 ```
 
 ```{r, echo = FALSE}
@@ -194,7 +187,8 @@ graph = nexus_flow_graph(fl = topo_fix$fl, cat = topo_fix$cat)
 
 mapview(graph$nodes[c('nodeID', "count")], layer.name = "nodes", col.regions = "red", cex = 4) + 
 mapview(graph$edges[c('ID', "ID2", "from", "to", "length")], layer.name = "edges") +
-mapview(graph$cat[c('ID', 'areasqkm')], layer.name = "divides", col.regions = NA) 
+mapview(graph$cat[c('ID', 'areasqkm')], layer.name = "divides", col.regions = NA) +
+mapview(cat, lty = 2, layer.name = "raw", col.regions = "gray")
 ```
 
 

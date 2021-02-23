@@ -18,7 +18,7 @@ find_node = function(fl, position){
   }
 }
 
-aggregate_by_connectivity = function(fl, ideal_size){
+aggregate_by_levelpath = function(fl, cat, ideal_size, max_size){
 
 inlets     <- st_set_geometry(fl, find_node(fl, position = 1)) %>%
   filter(!fromnode %in% tonode)
@@ -32,7 +32,9 @@ for (i in 1:nrow(inlets)) {
   count   <- 1
 
   while (length(values) > 0) {
-    inds    <- 1:which.min(abs(cumsum(values) - ideal_size))
+    v = cumsum(values)
+    v = ifelse(v > max_size, v + 1e9, v)
+    inds    <- 1:which.min(abs(v - ideal_size))
     values  <- values[-inds]
     indexes <- c(indexes, rep(count, length(inds)))
     count   <- count + 1
