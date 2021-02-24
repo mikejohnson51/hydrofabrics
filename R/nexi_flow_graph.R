@@ -2,8 +2,8 @@ nexus_flow_graph = function(fl, cat){
 
   start = fl %>%
     arrange(hydroseq_min) %>%
-    dplyr::select(hydroseq_min) %>%
-    mutate(ID = 1:n())
+    dplyr::select(hydroseq_min, ID, comids) %>%
+    mutate(oldID = ID, ID = 1:n())
 
   nexus  <- st_set_geometry(start, find_node(start, position = NULL)) %>%
     mutate(type = "to")
@@ -15,20 +15,16 @@ nexus_flow_graph = function(fl, cat){
     mutate(xy = paste(.$X, .$Y)) %>%
     mutate(nodeID = paste0("nex-", group_indices(., factor(xy, levels = unique(xy)))))
 
-  start = fl %>%
-    arrange(hydroseq_min) %>%
-    dplyr::select(hydroseq_min) %>%
-    mutate(ID = 1:n()) %>%
+  start = start %>%
     lwgeom::st_snap_to_grid(size = 1-5) %>%
     lwgeom::st_split(nexi) %>%
     st_collection_extract("LINESTRING") %>%
-    mutate(ID2 = 1:n(), length = st_length(.))
+    mutate(ID2 = 1:n(), lengthkm = as.numeric(set_units(st_length(.), "km")))
 
   nexus  <- st_set_geometry(start, find_node(start, position = NULL)) %>%
     mutate(type = "to")
   inlets  <- st_set_geometry(start, find_node(start, position = 1)) %>%
     mutate(type = "from")
-
 
   nexi = do.call(rbind, list(inlets, nexus)) %>%
     mutate(X = st_coordinates(.)[,1], Y = st_coordinates(.)[,2]) %>%
@@ -76,10 +72,7 @@ nexus_flow_graph = function(fl, cat){
     arrange(nodeID)
 
   edges = left_join(start, nodes, by = "ID2")
-
-  #TODO: need to define the "to" of each node
-  # nodes go to cathments
-  # Need to align fp to catchments, use same ID
+  cat$ID = edges$ID[match(cat$ID, edges$oldID)]
 
   return(list(nodes = nodes_sf, edges = edges, cat = cat))
 }

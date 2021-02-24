@@ -1,7 +1,7 @@
 ---
 title: "Refactor Walker Basin"
 author: "Mike Johnson"
-date: "2/19/2021"
+date: "`r Sys.Date()`"
 output: html_document
 out_dir: docs
 editor_options: 
@@ -12,7 +12,7 @@ editor_options:
 # Goal
 
 The goal here is to develop a workflow to modify hydrographic networks
-to achieve so more consistent catchment size distributions. This work
+to achieve more consistent catchment sizes. This work
 aims to leverage existing products (e.g, the NHD) that already have a
 delineated flow and catchment network.
 
@@ -34,7 +34,7 @@ The key tasks are to:
     scale, but that can allow areas to be processes piecemeal.
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning =FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 # Dependencies
 library(dplyr)
@@ -50,9 +50,8 @@ library(tibble)
 library(ggplot2)
 library(patchwork)
 
-huc10 <- "1805000502"
 ## Approximately 22,000 HUC10s in USA
-
+huc10 <- "1805000502"
 # Helpful
 library(mapview)
 ```
@@ -69,25 +68,25 @@ and should, be calculated within the workflow.
 ```{r}
 source('../R/prep_flownetwork.R')
 
-cat <- read_sf("../data/huc1805000502-catchment.gpkg") %>% 
+og_cat <- read_sf("../data/huc1805000502-catchment.gpkg") %>% 
    dplyr::select(comid = FEATUREID) %>% 
    mutate(areasqkm = as.numeric(set_units(st_area(.), "km2")))
 
-fl = read_sf("../data/huc1805000502-flowlines.gpkg") %>% 
-  prep_flownetwork(cat)
+og_fl = read_sf("../data/huc1805000502-flowlines.gpkg") %>% 
+  prep_flownetwork(og_cat)
 ```
 
 ## Base Data:
 
 ```{r}
 # Define with respect to square kilometers
-mapview(cat) + fl
+mapview(og_cat) + og_fl
 ```
 
 ```{r, echo = FALSE}
 make_plot = function(fl, cat, title, min, ideal, max){
   ggplot(cat, aes(x = areasqkm)) +
-  geom_density() +
+  geom_histogram() +
   geom_vline(xintercept = min, col = "gray20") +
   geom_vline(xintercept = ideal, col = "darkred") +
   geom_vline(xintercept = max, col = "gray20") +
@@ -103,7 +102,7 @@ make_plot = function(fl, cat, title, min, ideal, max){
   theme_bw()
 }
 
-make_plot(fl, cat, "NHDPlus Raw", 3, 10, 15) 
+make_plot(og_fl, og_cat, "NHDPlus Raw", 3, 10, 15) 
 ```
 
 To start, we identify the headwater inlets in the AOI. Using these as
@@ -114,7 +113,7 @@ flowpath COMIDs are aligned.
 
 ```{r}
 source('../R/aggregate_by_levelpath.R')
-agg_levelpath = aggregate_by_levelpath(fl, cat, ideal_size = 10, max_size = 15)
+agg_levelpath = aggregate_by_levelpath(og_fl, og_cat, ideal_size = 10, max_size = 15)
 mapview(agg_levelpath$cat) + agg_levelpath$fl
 ```
 
@@ -122,7 +121,9 @@ mapview(agg_levelpath$cat) + agg_levelpath$fl
 make_plot(agg_levelpath$fl, agg_levelpath$cat, "Connectivity",  3, 10, 15) 
 ```
 
-After "levelpath aggregation" we begin consuming catchments with sizes less then a minimum threshold, while enforcing a maximum threshold (both user defined). A stream order based logic is applied to aggregate smaller catchments into larger component. 
+After "levelpath aggregation" we begin consuming catchments with sizes less then a minimum threshold, while enforcing a maximum threshold (both user defined). A stream order based logic is applied to aggregate smaller catchments into larger component. The goal here is to align the flow network to the aggregated catchment
+network such that there is only 1 flow line per catchment, and all
+flowpaths are LINESTRINGS
 
 ```{r}
 source('../R/aggregate_by_size.R')
@@ -134,17 +135,6 @@ agg_size = aggregate_by_size(fl  = agg_levelpath$fl,
 mapview(agg_size$cat) + agg_size$fl
 ```
 
-The goal here is to align the flow network to the aggregated catchment
-network such that there is only 1 flow line per catchment, and all
-flowpaths are LINESTRINGS
-
-```{r}
-# TODO: need to remove this ... 
-# Integrat into aggregate by size...
-# source('../R/purge_flowlines.R')
-# purge_fl = purge_flowlines(agg_size$fl, agg_size$cat)
-# mapview(purge_fl$cat) + purge_fl$fl
-```
 
 ```{r, echo = FALSE}
 make_plot(agg_size$fl, agg_size$cat, "Size", 3, 10, 15) 
@@ -163,33 +153,35 @@ seeks to split, reunition and modify these areas.
 
 ```{r}
 source('../R/topology_doctor.R')
-topo_fix = topology_doctor(fl = agg_size$fl, cat = agg_size$cat)
-mapview(topo_fix$cat[c("ID", "areasqkm")]) + topo_fix$fl["ID"]
-```
-
-```{r}
-# TODO: slice-n-dice
-# Essentially this would look to move any double junction, to a three junction
-# If within a threshold (600m per Freds other suggestion? Is this ok here?)
+topo_resolve = topology_doctor(fl = agg_size$fl, cat = agg_size$cat)
+mapview(topo_resolve$cat[c("ID", "areasqkm")]) + topo_resolve$fl["ID"]
 ```
 
 ```{r, echo = FALSE}
-make_plot(topo_fix$fl, topo_fix$cat, "Topo", 3, 10, 15)
+make_plot(topo_resolve$fl, topo_resolve$cat, "Topo", 3, 10, 15)
 ```
 
 ## Indexing
 
 ```{r}
 source('../R/nexi_flow_graph.R')
-graph = nexus_flow_graph(fl = topo_fix$fl, cat = topo_fix$cat)
-
-#TODO: flowpath ids and catc ids should be aligned
+graph = nexus_flow_graph(fl = topo_resolve$fl, cat = topo_resolve$cat)
 
 mapview(graph$nodes[c('nodeID', "count")], layer.name = "nodes", col.regions = "red", cex = 4) + 
-mapview(graph$edges[c('ID', "ID2", "from", "to", "length")], layer.name = "edges") +
-mapview(graph$cat[c('ID', 'areasqkm')], layer.name = "divides", col.regions = NA) +
-mapview(cat, lty = 2, layer.name = "raw", col.regions = "gray")
+mapview(graph$edges[c('ID', "ID2", "from", "to", "lengthkm")], layer.name = "edges") +
+mapview(graph$cat[c('ID', 'areasqkm')], layer.name = "divides", col.regions = NA)
 ```
 
+```{r}
+source('../R/collapse_junctions.R')
+graph = collapse_junctions(graph, og_catchments = og_cat, 1)
 
+mapview(graph$nodes[c('nodeID', "count")], layer.name = "nodes", col.regions = "red", cex = 4) + 
+mapview(graph$edges[c('ID', "ID2", "from", "to", "lengthkm")], layer.name = "edges") +
+mapview(graph$cat[c('ID', 'areasqkm')], layer.name = "divides", col.regions = NA)
+```
+
+```{r, echo = FALSE}
+make_plot(graph$edges, graph$cat, "Junction Snap", 3, 10, 15)
+```
 

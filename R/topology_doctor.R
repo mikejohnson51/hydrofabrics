@@ -47,8 +47,10 @@ topology_doctor = function(fl, cat){
     cat$geom[inters] <- topo_fix(base_cat = tmp, anchor = nexi[x, ])$geom
   }
 
-  o <- st_intersection(cat, fl) %>%
+  o <- suppressWarnings({
+    st_intersection(cat, fl) %>%
     filter(ID != ID.1, as.numeric(st_length(.)) > 1)
+  })
 
   for (x in 1:nrow(o)) {
 
@@ -92,5 +94,9 @@ topology_doctor = function(fl, cat){
     cat$geom[cat$ID == to_merge$ID] <- oddball_poly
   }
 
-  return(list(fl = fl, cat = cat))
+  merge_fl = left_join(fl, st_drop_geometry(select(cat, -areasqkm)), by = "ID") %>%
+    mutate(length = as.numeric(set_units(st_length(.), 'km')))
+  merge_cat = cat %>% mutate(areasqkm = as.numeric(set_units(st_area(.), 'km2')))
+
+  return(list(fl = merge_fl, cat = merge_cat))
 }
