@@ -31,6 +31,19 @@ multi_to_line = function(obj){
   obj
 }
 
+
+multi_to_poly = function(obj){
+  for (i in 1:nrow(obj)) {
+    if (st_geometry_type(st_geometry(obj)[i]) == "MULTIPOLYGON") {
+      st_geometry(obj)[i] <- st_combine(st_cast(st_geometry(obj)[i], "POLYGON"))
+    }
+    message(i)
+  }
+  obj
+}
+
+i = 64
+mapview(obj2[64,])
 make_graph = function(hy){
   sfnetworks::as_sfnetwork(activate(hy, "fl")) %>%
     sfnetworks::activate("nodes") %>%

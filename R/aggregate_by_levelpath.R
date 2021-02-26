@@ -18,7 +18,9 @@ find_node = function(fl, position){
   }
 }
 
-aggregate_by_levelpath = function(fl, cat, ideal_size, max_size){
+aggregate_by_levelpath = function(fl, cat, ideal_size, max_size, max_length){
+
+fl = left_join(fl, st_drop_geometry(cat), by = "comid")
 
 inlets     <- st_set_geometry(fl, find_node(fl, position = 1)) %>%
   filter(!fromnode %in% tonode)
@@ -28,45 +30,65 @@ out        <- list()
 for (i in 1:nrow(inlets)) {
   this.lp <- filter(fl, levelpathi == inlets$levelpathi[i]) %>% arrange(-hydroseq)
   values  <- this.lp$areasqkm
+  values2 <- this.lp$lengthkm
   indexes <- c()
   count   <- 1
 
   while (length(values) > 0) {
     v = cumsum(values)
     v = ifelse(v > max_size, v + 1e9, v)
-    inds    <- 1:which.min(abs(v - ideal_size))
+
+    v2 = cumsum(values2)
+
+    index = min(which.min(abs(v - ideal_size)), sum(v2 < max_length))
+
+    inds    <- 1:index
     values  <- values[-inds]
+    values2 <- values2[-inds]
     indexes <- c(indexes, rep(count, length(inds)))
     count   <- count + 1
   }
 
   all_from  <- lapply(1:nrow(this.lp), function(x){ fromJSON(this.lp$fromCOMID[x]) })
+  # all_to  <- lapply(1:nrow(this.lp), function(x){ fromJSON(this.lp$toCOMID[x]) })
+  # all_comid  <- lapply(1:nrow(this.lp), function(x){ this.lp$comid[x] })
 
-  out[[i]] <-  group_by(this.lp, ind = indexes) %>%
+  out[[i]] <-  suppressMessages({
+    group_by(this.lp, ind = indexes) %>%
     summarise(levelpathi  = levelpathi[1],
               hydroseq_min = min(hydroseq),
-              streamorde  = max(streamorde),
-              toCOMID     = toJSON(toCOMID),
-              fromCOMID   = toJSON(unlist(all_from)),
-              comids      = toJSON(comid)) %>%
-    st_line_merge() %>%
-    mutate(lengthkm = set_units(st_length(.), "km"))
+              streamorde   = max(streamorde),
+              toCOMID      = toJSON(unlist(Map(fromJSON, toCOMID))),
+              fromCOMID    = toJSON(unique(unlist(all_from))),
+              comids       = toJSON(unique(comid)))
+  })
 }
+
 
 new_fl <- do.call(rbind, out) %>%
   mutate(lengthkm = as.numeric(set_units(st_length(.), "km")),
          ID = 1:n(), levelpathi,
-         ind = NULL)
+         ind = NULL) %>%
+  multi_to_line()
 
-catchments = lapply(1:nrow(new_fl), function(i){
-  filter(cat, comid %in% fromJSON(new_fl$comids[i])) %>%
-    summarize(ID = new_fl$ID[i]) %>%
-    st_cast("POLYGON")
+catchments = list()
+
+suppressWarnings({
+  suppressMessages({
+    for(i in 1:nrow(new_fl)){
+    catchments[[i]] = filter(cat, comid %in% fromJSON(new_fl$comids[i])) %>%
+      summarize(ID = new_fl$ID[i])
+   }
+  })
 })
 
-new_cat <- do.call(rbind, catchments) %>%
+new_cat <- suppressMessages({
+do.call(rbind, catchments) %>%
+ # multi_to_poly() %>%
   mutate(areasqkm = as.numeric(set_units(st_area(.), "km2"))) %>%
+
   rmapshaper::ms_simplify(.9)
+})
 
 return(list(fl = new_fl, cat = new_cat))
 }
