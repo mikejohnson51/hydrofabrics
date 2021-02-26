@@ -42,8 +42,6 @@ multi_to_poly = function(obj){
   obj
 }
 
-i = 64
-mapview(obj2[64,])
 make_graph = function(hy){
   sfnetworks::as_sfnetwork(activate(hy, "fl")) %>%
     sfnetworks::activate("nodes") %>%

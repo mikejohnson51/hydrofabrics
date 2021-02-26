@@ -1,5 +1,5 @@
 ---
-title: "Sprint 0: topology based refacotring and graph stucture"
+title: "Sprint 0: topology based refactoring and graph structure"
 author: "Mike Johnson"
 date: "`r Sys.Date()`"
 output: html_document
