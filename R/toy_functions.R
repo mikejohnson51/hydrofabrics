@@ -3,7 +3,7 @@ make_hy = function(flowpaths, catchments, ID = "comid"){
     rename("cat_geom" = geom.x, "fl_geom" = geom.y)
 }
 
-activate = function(x, type = "cat"){
+realize = function(x, type = "cat"){
   st_set_geometry(x, paste0(type, "_geom"))
 }
 

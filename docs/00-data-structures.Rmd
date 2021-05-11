@@ -24,11 +24,11 @@ library(jsonlite)
 
 Three tenets of `hy_features` are:
 
-- a catchment realization must be able to perform the functions of a flowpath and a catchment area.
-- to support multiple scale models and data, any catchment realization may be composed of a network of other catchment realizations.
-- Catchment and nexus provide identity and topology. They do not have attributes or geometry.
+- a catchment realization must perform the functions of a *flowpath* and a *catchment* area.
+- Any catchment realization may be composed of a network of other catchment realizations.
+- Catchment and nexus provide identity and topology but do _not_ have attributes or geometry.
 
-Thus, we *need* geometry to inform processing, and we need that geometry to associate flow paths and catchment but be used intercahangbly.
+- But, we *need* geometry to inform processing, and we need that geometry to associate flow paths and catchment intercahangbly.
 
 We have 2 distinct files with a shared ID (comid):
 ```{r}
@@ -38,7 +38,7 @@ og_cat <- read_sf("../data/huc1805000502-catchment.gpkg") %>%
    dplyr::select(comid = FEATUREID)
 
 og_fl = read_sf("../data/huc1805000502-flowlines.gpkg") %>% 
-  prep_flownetwork(og_cat) 
+  prep_flownetwork() 
 ```
 
 Lets create a single object that contains both "realizations" is a single go:
@@ -61,7 +61,6 @@ But, often we want/need the flowpath represneation! So lets "activate" the flow 
 
 ```{r}
 hy = activate(hy, "fl")
-head(hy)
 plot(st_geometry(hy))
 ```
 
@@ -75,15 +74,15 @@ plot_hy(hy)
 Awesome! Now what about "realization" centric calcuations like length/area?
 
 ```{r}
-activate(hy, "fl") %>% st_length()
-activate(hy, "fl") %>% st_area()
-activate(hy, "cat") %>% st_area()
+realize(hy, "fl") %>% st_length()
+realize(hy, "fl") %>% st_area()
+realize(hy, "cat") %>% st_area()
 ```
 
 Flow path should be LINESTRINGS, not MULTILINESTRINGS. Always!
 
 ```{r}
-hy = multi_to_line(activate(hy, "fl"))
+hy = multi_to_line(realize(hy, "fl"))
 ```
 
 ## {Graph}ing
@@ -93,5 +92,6 @@ Here we enforce, a topologic order as well:
 
 ```{r}
 hy_net = make_graph(hy)
-hy_net
+hy_net %>% tidygraph::activate("edges"),"cat")[[edges]]
+plot(realize(activate(hy_net, "edges"), "cat"),add = TRUE)
 ```
