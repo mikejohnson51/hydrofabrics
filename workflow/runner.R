@@ -38,7 +38,7 @@ wfe <- file.path(dir, "waterbody_edge_list.json")
 
 fline = read_sf(path, "flowpaths") %>%
   select(ID, toID, lengthkm, LevelPathID) %>%
-  mutate(from_nID = fline$ID)
+  mutate(from_nID = ID)
 
 fline <- left_join(fline,
                    select(st_drop_geometry(fline), .data$ID, to_nID = .data$from_nID),
@@ -87,6 +87,62 @@ flowpath_data = select(fline, ID, lengthkm, main_id = .data$LevelPathID) %>%
   left_join(catchment_edge_list, by = "ID")
 
 nexus_data =  left_join(nexus, catchment_edge_list, by = "ID")
+
+### USGS NWIS Map
+
+usgs = readRDS("data/usgs_rc.rds") %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
+  select(COMID, siteID, name) %>%
+  st_transform(5070)
+
+oo = st_filter(usgs, catchment_data)
+
+what_nwis_data <- dataRetrieval::whatNWISdata(siteNumber = gsub("USGS-", "", oo$siteID))
+
+nwis_sites <- filter(what_nwis_data, parm_cd == "00060" & data_type_cd == "uv") %>%
+  st_as_sf(coords = c("dec_long_va", "dec_lat_va"),
+           crs = 4269) %>%
+  st_transform(5070)
+
+
+distance_from_outlet =
+
+  xx = st_join(nwis_sites, catchment_data)
+
+fl = filter(flowpath_data, ID %in% xx$ID)
+fl$geom = nhdplusTools::get_node(fl)$geometry
+
+for(i in 1:nrow(xx)){
+  xx$dist_to_outlet_m[i] = as.numeric(st_distance(filter(fl, ID == xx$ID[i]), xx[i,]))
+  xx$ratio[i] =  100 * nwis_sites$dist_to_outlet_m[i]  / (filter(fl, ID == xx$ID[i])$lengthkm * 1e3)
+}
+
+oo = xx %>%
+  select(ID, site_no, ratio) %>%
+  st_drop_geometry() %>%
+  group_by(ID) %>%
+  slice_min(ratio) %>%
+  ungroup() %>%
+  left_join(ff)   %>%
+  setNames(tolower(names(.)))
+
+oo$member_comid = lapply(1:nrow(oo), function(x) {
+  as.vector(el(strsplit(oo$member_comid[x], ",")))
+})
+
+
+nhd_crosswalk <- lapply(1:nrow(oo), function(x) {
+  list(COMID = unlist(oo$member_comid[x]),
+       site_no = jsonlite::unbox(oo$site_no[x]),
+       percent_up_path = jsonlite::unbox(oo$ratio[x]) )
+
+})
+
+names(nhd_crosswalk) = oo$id
+
+
+jsonlite::write_json(nhd_crosswalk, "data/2021-05-19/nwis-cat-mapping.json", pretty = TRUE,
+                     auto_unbox = FALSE)
 
 #taken from DB code...
 write_geojson <- function(x, y) {

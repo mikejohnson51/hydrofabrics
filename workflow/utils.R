@@ -4,6 +4,7 @@ library(rmapshaper)
 library(mapview)
 library(data.table)
 library(ggplot2)
+library(units)
 
 flowpaths_to_linestrings = function(fp){
   bool = (st_geometry_type(st_geometry(fp)) == "MULTILINESTRING")
@@ -368,5 +369,57 @@ dissolve_network = function(m1, cat_dt, fl_dt, min_area = 3, max_area = 15, filt
   }
 
   return(list(m1 = m1, fl_dt = fl_dt, cat_dt = cat_dt ))
-
 }
+
+get_nhd_crosswalk <- function(x, catchment_prefix = "catchment_",
+                              network_order = NULL, sites = data.frame(local_id = character(0),
+                                                                       site_no = character(0))) {
+
+  nhd_crosswalk <- st_drop_geometry(x) %>%
+    select(.data$ID, .data$member_COMID) %>%
+    mutate(member_COMID = strsplit(.data$member_COMID, ",")) %>%
+    unnest(cols = c("member_COMID")) %>%
+    mutate(local_id = paste0(catchment_prefix, .data$ID)) %>%
+    select(.data$local_id, COMID = .data$member_COMID)
+
+  if(!is.null(network_order)) {
+    outlet_comid <- dplyr::mutate(nhd_crosswalk, outlet_COMID = as.integer(.data$COMID)) %>%
+      left_join(network_order, by = c("outlet_COMID" = "COMID")) %>%
+      group_by(.data$local_id) %>%
+      filter(.data$Hydroseq == min(.data$Hydroseq)) %>%
+      select(-.data$Hydroseq, -.data$COMID) %>%
+      ungroup()
+
+    nhd_crosswalk <- dplyr::left_join(nhd_crosswalk,
+                                      outlet_comid,
+                                      by = "local_id")
+
+    nhd_crosswalk <- dplyr::left_join(nhd_crosswalk,
+                                      sites,
+                                      by = "local_id")
+
+    new_names <- unique(nhd_crosswalk$local_id)
+
+    nhd_crosswalk <- lapply(unique(nhd_crosswalk$local_id), function(x, df) {
+
+      df_sub <- df[df$local_id == x, ]
+
+      out <- list(COMID = df_sub$COMID)
+
+      if(any(!is.na(df_sub$site_no))) {
+        out$site_no <- unique(df_sub$site_no[!is.na(df_sub$site_no)])
+      }
+
+      out$outlet_COMID <- unique(df_sub$outlet_COMID)
+
+      out
+
+    }, df = nhd_crosswalk)
+
+    names(nhd_crosswalk) <- new_names
+
+  }
+
+  nhd_crosswalk
+}
+
