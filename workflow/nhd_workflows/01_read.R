@@ -7,10 +7,9 @@ dir = "/Users/mjohnson/nhd_rds"
 #############################################################################
 # Catchments only carry around geometry and ID
 in_fl <- readRDS(file.path(dir, 'nhdplus_flowline_update.rds')) %>%
-  filter(COMID %in% net$comid) %>%
   filter(RPUID == RPU) %>%
   select(COMID, Hydroseq, geometry = Shape, order = StreamOrde,
-         LevelPathI, toCOMID) %>%
+         LevelPathI, toCOMID, TerminalFl) %>%
   mutate(lengthkm = as.numeric(set_units(st_length(.), "km"))) %>%
   setNames(tolower(names(.)))
 
