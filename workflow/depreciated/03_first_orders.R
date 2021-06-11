@@ -11,7 +11,7 @@ fl  = read_sf(path, "flowpaths") %>%
 
 #############################################################################
 
-shorts = filter(fl, stream_order == 1) %>%
+shorts = filter(fl, stream_order == 1) %>%x
   filter(lengthkm < .6)
 
 filter(shorts, toID == 3526)

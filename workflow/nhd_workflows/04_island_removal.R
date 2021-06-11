@@ -8,7 +8,7 @@ out_path   <- "workflow/nhd_workflows/cache/ngen_01a-3.gpkg"
 
 cat = read_sf(path, layer = "catchments")
 fl  = read_sf(path, layer = "flowpaths") %>%
-  select(-ind)
+  select(comid, tocomid, levelpathi, hydroseq, order, member_COMID)
 
 # Interior Ring Removal and Fill ------------------------------------------
 # example = 15192 (outside), 15193 (interior)
@@ -21,7 +21,7 @@ interior_rings = data.frame(ID = cat$comid,
 
 int_list = inters[which(cat$comid %in% interior_rings$ID)]
 
-all = cat$ID[unlist(int_list)]
+all = cat$comid[unlist(int_list)]
 
 exteriors = all[!all %in% interior_rings$ID]
 
@@ -48,7 +48,7 @@ new_cat = cat %>%
 
 new_fl = fl %>%
   filter(comid %in% new_cat$comid) %>%
-  inner_join(st_drop_geometry(new_cat), by = 'comid')
+  mutate(lengthkm = as.numeric(st_length(.)/1e3))
 
 #--------------------------------------------------
 #############################################################################

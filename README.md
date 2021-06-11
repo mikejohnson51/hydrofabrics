@@ -212,7 +212,7 @@ by a bottom width and and
                 "paramZ": 0.6
               }
             ],
-            "realized_flowpath": "fp-1",
+            "realized_flowpath": "wb-1",
             "realized_catchment": "cat-1"
           }
         }

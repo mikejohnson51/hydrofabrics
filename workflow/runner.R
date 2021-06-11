@@ -97,17 +97,14 @@ usgs = readRDS("data/usgs_rc.rds") %>%
 
 oo = st_filter(usgs, catchment_data)
 
+
+
 what_nwis_data <- dataRetrieval::whatNWISdata(siteNumber = gsub("USGS-", "", oo$siteID))
 
 nwis_sites <- filter(what_nwis_data, parm_cd == "00060" & data_type_cd == "uv") %>%
   st_as_sf(coords = c("dec_long_va", "dec_lat_va"),
            crs = 4269) %>%
   st_transform(5070)
-
-
-distance_from_outlet =
-
-  xx = st_join(nwis_sites, catchment_data)
 
 fl = filter(flowpath_data, ID %in% xx$ID)
 fl$geom = nhdplusTools::get_node(fl)$geometry
@@ -139,7 +136,6 @@ nhd_crosswalk <- lapply(1:nrow(oo), function(x) {
 })
 
 names(nhd_crosswalk) = oo$id
-
 
 jsonlite::write_json(nhd_crosswalk, "data/2021-05-19/nwis-cat-mapping.json", pretty = TRUE,
                      auto_unbox = FALSE)

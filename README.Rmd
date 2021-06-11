@@ -140,7 +140,7 @@ properties = structure(list(type = "HY_River",
 `cross_section` = list(data.frame("nex-id" = c("nex-1",  "nex-3"),
 paramB = c(.2,.3),
 paramZ= c(.5,.6))),
-realized_flowpath = "fp-1", realized_catchment = "cat-1"), class = "data.frame", row.names = 1L)), class = "data.frame", row.names = 1L)) %>%
+realized_flowpath = "wb-1", realized_catchment = "cat-1"), class = "data.frame", row.names = 1L)), class = "data.frame", row.names = 1L)) %>%
 jsonlite::toJSON(pretty = TRUE)
 ```
 
